@@ -190,9 +190,9 @@ package buf
   同一接收者的方法连续，紧跟类型或构造函数，不要被无关函数打断。
 - `ORG-05 MUST` 同一接收者的方法连续排列；相关声明可分组，无关声明不得混组。
 - `ORG-06 SHOULD` 方法顺序与接口声明顺序一致。`slog.Handler` 固定：`Enabled` → `Handle` → `WithAttrs` → `WithGroup`，然后是私有辅助方法。
-- `ORG-07 SHOULD` 有类型状态或语义的逻辑写成方法；无状态、跨类型的纯算法写成包级函数。不用 `buildXxx` / `emptyXxx` 转发一层赋值。
+- `ORG-07 SHOULD` 能写成方法就写成方法。包级函数只用于极少数跨类型复用、且没有业务逻辑的纯工具。不用 `buildXxx` / `emptyXxx` 转发一层赋值。
 - `ORG-08 MUST NOT` 仅为减少行数抽取只赋值的 `buildXxx`；抽取应对应独立概念。入口里能看完的拼装、映射、环境分支写在调用点。
-- `ORG-09 MUST` 同一类结构体字段顺序保持一致。包装/装饰类型：下游（`next`）→ 配置 → 运行时状态。组装用的 `xxxConfig` 按组装或生效顺序排列字段。
+- `ORG-09 MUST` 同一类结构体字段顺序保持一致：标识、分类与状态、核心数据、附属信息、时间。包装/装饰类型：下游（`next`）→ 配置 → 运行时状态。`xxxConfig` 按生效顺序排列。方法参数按核心优先级排列。
 - `ORG-10 SHOULD` 包装/装饰类型：`next == nil` 视为程序员错误，可 panic；功能关闭时直接返回 `next`，不包空壳。空的 `WithAttrs` / 空 group 名返回原值。派生用 `clone := *h` 再改 `next` 和本次变化的字段；浅拷贝共享的 slice/map/指针在构造后不得再改。热路径没有改动则传递原值，避免无谓 `Clone`。
 - `ORG-11 MUST` 方案在实现中途变化后，按当前方案回顾整条调用链，再改代码。不得只改最后一句提到的函数，留下旧方案的类型、字段、错误码、常量、注释、测试和调用方。
   - 重走入口、请求与响应类型、存储、缓存载荷、错误文案、测试和调用方。
@@ -219,7 +219,7 @@ import (
 ```
 
 ```go
-// OK: 抽独立概念；有接收者语义用方法，无状态算法用包级函数。
+// OK: 抽独立概念。业务逻辑写成方法；包级函数只放没有业务逻辑的纯工具。
 func truncateUTF8(value string, maxBytes int) (string, bool)
 func (h *truncateHandler) truncateAttr(attr slog.Attr) (slog.Attr, bool)
 
@@ -278,10 +278,10 @@ func (l *Limiter) Wait(ctx context.Context, n int) error
 - `ERR-01 MUST` 每个 error 都要处理、返回，或仅在不变式破坏时 panic。不得用 `_` 静默丢弃。例外：已返回且无法附加的关闭错误（`FLOW-05`）；`CONC-02` 允许放弃等待的协调器。
 - `ERR-02 MUST` 先处理错误并早返回，保持成功路径少缩进；后续仍需变量时，不要把声明藏在 `if` 初始化语句中再加 `else`。
 - `ERR-03 MUST` 错误字符串小写开头、句末无标点；专有名词和缩写例外。日志是完整消息，可正常大写。
-- `ERR-04 SHOULD` 包装文案使用简短操作名：`fmt.Errorf("open %s: %w", path, err)`；不要堆叠 `failed to`。冒号分隔操作与细节，不标注包名。
+- `ERR-04 SHOULD` 包装文案使用简短操作名：`fmt.Errorf("open %s: %w", path, err)`；不要堆叠 `failed to`，也不要重复下层文案。冒号分隔操作与细节，不标注包名。
 - `ERR-11 MUST NOT` 错误字符串以 `pkg:` / `pkg：` 开头（如 `app: already run`）。来源用日志字段区分，不写进 error。
 - `ERR-12 SHOULD` 对外 SDK 仅在出包边界写 `pkg 操作: 细节`（包名与操作之间空格）：`fmt.Errorf("wecom GET %s: %w", path, err)`。包内只写操作；上层不得再叠一层包名。进程内库不加包名。
-- `ERR-05 MUST` 同一错误只处理一次：要么向上返回，要么在边界记录日志、降级或转为领域错误；不得既记录 Error 日志又包装返回。
+- `ERR-05 MUST` 同一错误只处理一次：要么向上返回，要么在边界记录日志、降级或转为领域错误；不得既记录 Error 日志又包装返回。循环里单条失败且继续时，打一次日志后 `continue`。
 
 ### 返回与匹配
 
